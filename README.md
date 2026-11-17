@@ -206,7 +206,18 @@ make check      # shellcheck, stylua, leak scan, and tests
 make test       # tests only
 ```
 
-The leak scan always runs generic checks (home paths and email addresses). For your own list of words that must never appear, create `~/.config/tmux-nvim-claude/private-patterns` with one regex per line. Keep that file out of the repo.
+The leak scan always runs generic checks (home paths and email addresses). It also reads your own list of words that must never appear, such as company names, internal hosts, and ticket keys.
+
+To set up the list:
+
+```bash
+mkdir -p ~/.config/tmux-nvim-claude
+cp scripts/private-patterns.example ~/.config/tmux-nvim-claude/private-patterns
+```
+
+Edit the copy. Use one regex per line. Keep the copy out of the repo. The example file holds placeholder words only.
+
+The list lives on your machine. CI and other clones run only the generic checks. If you accept changes from others, review them for these words yourself, or share the list with them in private.
 
 The tests run on a separate tmux server (`tmux -L`). They never touch your own tmux. See `CLAUDE.md` for the rules for this repo.
 

@@ -1,0 +1,14 @@
+# Example word list for scripts/check-private.sh. Do not put real names here.
+# Copy it, then edit the copy:
+#   mkdir -p ~/.config/tmux-nvim-claude
+#   cp scripts/private-patterns.example ~/.config/tmux-nvim-claude/private-patterns
+# One extended regex per line. A '#' starts a comment. Matching ignores case.
+
+# A company or team name
+acme-corp
+# An internal service name, with word edges
+\binternal-billing\b
+# A ticket key
+\bPROJ-[0-9]+\b
+# An internal host name
+\.corp\.example\.net
