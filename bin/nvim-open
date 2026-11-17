@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Usage: nvim-open <abs-path> <first-line> [last-line]
+# Open a file in the Neovim of the current tmux window and highlight a line range.
+# Start Neovim in a new split if the window has none. Never fail the caller.
+set -u
+
+usage() { echo "usage: nvim-open <abs-path> <first-line> [last-line]" >&2; exit 2; }
+
+[ $# -ge 2 ] || usage
+path=$1
+first=$2
+last=${3:-$2}
+
+case $path in /*) ;; *) echo "nvim-open: path must be absolute" >&2; exit 2 ;; esac
+case $path in *\"* | *\\*) echo "nvim-open: unsupported character in path" >&2; exit 2 ;; esac
+case $first$last in *[!0-9]*) echo "nvim-open: line numbers must be integers" >&2; exit 2 ;; esac
+
+[ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || { echo "nvim-open: not in tmux" >&2; exit 0; }
+
+win=$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}')
+
+live_socket() {
+	local sock
+	sock=$(tmux show-options -wqv -t "$win" @nvim_server)
+	[ -n "$sock" ] && [ -S "$sock" ] && echo "$sock"
+}
+
+# Fallback for a Neovim that started before it registered itself.
+# The RPC socket belongs to the `nvim --embed` child of the TUI process, and
+# that child has no tty. Find the TUI on the pane tty, then its child.
+find_unregistered_socket() {
+	local tty tui pid sock
+	for tty in $(tmux list-panes -t "$win" -F '#{pane_tty}'); do
+		for tui in $(ps -t "${tty#/dev/}" -o pid=,comm= | awk '$2 ~ /nvim$/ {print $1}'); do
+			for pid in $(ps -A -o pid=,ppid= | awk -v p="$tui" '$2 == p {print $1}'); do
+				for sock in "${TMPDIR:-/tmp/}"nvim."$USER"/*/nvim."$pid".0; do
+					[ -S "$sock" ] && { echo "$sock"; return 0; }
+				done
+			done
+		done
+	done
+	return 1
+}
+
+window_has_nvim() {
+	tmux list-panes -t "$win" -F '#{pane_current_command}' | grep -q '^nvim$'
+}
+
+sock=$(live_socket) || sock=$(find_unregistered_socket) || sock=""
+
+if [ -n "$sock" ]; then
+	tmux set-option -w -t "$win" @nvim_server "$sock"
+elif window_has_nvim; then
+	echo "nvim-open: Neovim runs in this window but its socket was not found" >&2
+	exit 0
+else
+	cwd=$(tmux display-message -p -t "$TMUX_PANE" '#{pane_current_path}')
+	tmux set-option -w -t "$win" -u @nvim_server
+	# -d keeps focus on the Claude pane so the user can type the next command.
+	# -b puts the new pane on the left of it.
+	tmux split-window -d -b -h -l 60% -t "$TMUX_PANE" -c "$cwd" nvim
+	for _ in $(seq 1 50); do
+		sleep 0.2
+		sock=$(live_socket) && break
+	done
+	[ -n "$sock" ] || { echo "nvim-open: Neovim did not register a socket" >&2; exit 0; }
+fi
+
+nvim --server "$sock" --remote-expr \
+	"v:lua.require('tmux_review').open(\"$path\", $first, $last)" >/dev/null ||
+	echo "nvim-open: remote call failed" >&2
+exit 0

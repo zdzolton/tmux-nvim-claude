@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# Usage: prune-worktrees [--dry-run]
+# Removes worktrees (and their local branches) whose PR is merged or closed,
+# in every repo under $CODE_DIR (default ~/code). Removes only the safe cases
+# on its own. In a terminal it asks y/N for anything that could lose work.
+# Otherwise it keeps those worktrees and lists them.
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: prune-worktrees [--dry-run] [--no-prompt]
+
+Removes worktrees and local branches whose PR is merged or closed, in every
+repo under $CODE_DIR (default ~/code). Skips worktrees with an open PR or no PR.
+
+Safe: PR merged, tree clean, local HEAD equals the PR head. Removed without
+asking. Unsafe: PR closed without a merge, uncommitted changes, or local commits
+that differ from the merged PR head.
+
+In a terminal, it asks y/N for each unsafe worktree. When stdin or stdout is not
+a terminal, or with --no-prompt, it never asks. It keeps the unsafe worktrees
+and lists them at the end. It never reads from /dev/tty in that mode.
+
+  --dry-run    Print the plan. Remove nothing.
+  --no-prompt  Never ask. Keep and list the unsafe worktrees.
+  -h, --help   Show this help.
+USAGE
+}
+
+DRY_RUN=0
+NO_PROMPT=0
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+    --no-prompt) NO_PROMPT=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown argument: $arg" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+INTERACTIVE=0
+if [ "$NO_PROMPT" = 0 ] && [ -t 0 ] && [ -t 1 ]; then
+  INTERACTIVE=1
+fi
+
+CODE_DIR="${CODE_DIR:-$HOME/code}"
+REPORT=""
+PENDING=""
+HERE=$(pwd -P)
+
+gh auth status >/dev/null 2>&1 || { echo "gh is not authenticated. Run: gh auth login" >&2; exit 1; }
+
+confirm() {
+  local ans
+  read -r -p "$1 [y/N] " ans </dev/tty || return 1
+  [[ "$ans" =~ ^[Yy]$ ]]
+}
+
+process_repo() {
+  local repo="$1" wt branch info state pr_head head_sha reason force sha
+  git -C "$repo" worktree prune
+
+  while IFS= read -r wt <&3; do
+    branch=$(git -C "$wt" branch --show-current 2>/dev/null || true)
+    if [ -z "$branch" ]; then
+      echo "  skip $wt (detached HEAD)"
+      continue
+    fi
+
+    info=$(cd "$wt" && gh pr list --head "$branch" --state all --limit 1 \
+      --json state,headRefOid \
+      --jq 'if length == 0 then empty else .[0] | "\(.state) \(.headRefOid)" end' || true)
+    state="${info%% *}"
+    pr_head="${info#* }"
+
+    case "$state" in
+      MERGED|CLOSED) ;;
+      "") echo "  skip $branch (no PR)"; continue ;;
+      *) echo "  skip $branch (PR is $state)"; continue ;;
+    esac
+
+    if [[ "$HERE/" == "$wt/"* ]]; then
+      echo "  skip $branch (you are running from inside it)"
+      continue
+    fi
+
+    reason=""
+    force=""
+    if [ "$state" = "CLOSED" ]; then
+      reason="PR was closed without a merge"
+    fi
+    if [ -n "$(git -C "$wt" status --porcelain)" ]; then
+      reason="${reason:+$reason; }uncommitted changes"
+    fi
+    head_sha=$(git -C "$wt" rev-parse HEAD)
+    if [ "$state" = "MERGED" ] && [ "$head_sha" != "$pr_head" ]; then
+      reason="${reason:+$reason; }local commits differ from the merged PR head"
+    fi
+
+    if [ -n "$reason" ]; then
+      if [ "$DRY_RUN" = 1 ]; then
+        echo "  would ask: $branch ($reason)"
+        continue
+      fi
+      if [ "$INTERACTIVE" = 0 ]; then
+        echo "  kept $branch ($reason)"
+        PENDING="${PENDING}$(basename "$repo"): $branch ($reason)"$'\n'
+        continue
+      fi
+      if ! confirm "  $branch: $reason. Remove $wt anyway?"; then
+        echo "  kept $branch"
+        continue
+      fi
+      force="--force"
+    elif [ "$DRY_RUN" = 1 ]; then
+      echo "  would remove: $branch ($state)"
+      continue
+    fi
+
+    sha=$(git -C "$repo" rev-parse --short "$branch")
+    if ! git -C "$repo" worktree remove $force "$wt"; then
+      echo "  FAILED to remove $wt" >&2
+      continue
+    fi
+    git -C "$repo" branch -D "$branch" >/dev/null
+    echo "  removed $branch ($state, was $sha)"
+    REPORT="${REPORT}$(basename "$repo"): $branch was $sha"$'\n'
+    if [ -d "$wt" ]; then
+      echo "  note: $wt still exists. Check it, then delete it by hand."
+    fi
+  done 3< <(git -C "$repo" worktree list --porcelain \
+    | awk '/^worktree / { n++; if (n > 1) { sub(/^worktree /, ""); print } }')
+}
+
+for d in "$CODE_DIR"/*/; do
+  # A linked worktree has a .git file. Only main checkouts have a .git directory.
+  [ -d "${d}.git" ] || continue
+  repo=$(cd "$d" && pwd -P)
+  count=$(git -C "$repo" worktree list | wc -l)
+  [ $((count + 0)) -gt 1 ] || continue
+  echo "== $(basename "$repo")"
+  process_repo "$repo"
+done
+
+if [ -n "$REPORT" ]; then
+  echo
+  echo "Removed branches (restore with: git branch <name> <sha>):"
+  printf '%s' "$REPORT"
+fi
+
+if [ -n "$PENDING" ] && [ "$DRY_RUN" = 0 ]; then
+  echo
+  echo "Kept. These need your confirmation. Run prune-worktrees in a terminal:"
+  printf '%s' "$PENDING"
+fi

@@ -1,0 +1,6 @@
+brew "tmux"
+brew "neovim"
+brew "jq"
+brew "gh"
+brew "git"
+brew "terminal-notifier"

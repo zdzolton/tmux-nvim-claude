@@ -1,0 +1,11 @@
+name: check
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -S warning bin/* install.sh doctor.sh scripts/*.sh tests/*.sh claude/statusline-command.sh
+      - name: private strings
+        run: scripts/check-private.sh

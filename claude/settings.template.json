@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nvim-open:*)"
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash __REPO__/claude/statusline-command.sh"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r \".tool_input.command // empty\"); [ -z \"$cmd\" ] && exit 0; echo \"$cmd\" | grep -qE \"[;&|\\`\\$(){}<>]\" && exit 0; echo \"$cmd\" | grep -qE -- \"(^| )--(out|ex|no-in)\" && exit 0; echo \"$cmd\" | grep -qE \"^git -C __CODE_DIR__/[A-Za-z0-9_.-]+ (status|log|diff|show|blame|describe|ls-files|ls-tree|rev-parse|shortlog|cat-file)( .*)?$\" && echo \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"allow\\\",\\\"permissionDecisionReason\\\":\\\"git -C read-only subcommand under code worktree\\\"}}\"; exit 0",
+            "if": "Bash(git -C *)"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__REPO__/bin/tmux-window-notify.sh '🔔 Claude Code' 'Claude needs your input'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__REPO__/bin/tmux-window-notify.sh '✅ Claude Code' 'The task has been completed'"
+          }
+        ]
+      }
+    ]
+  }
+}
