@@ -35,7 +35,13 @@ Walk through a diff one hunk at a time. Never start unprompted. The user must as
   - Mixed hunk: list the new-file ranges. Add `removed old lines X-Y` as a separate item.
   - New file: use `lines 1-N (new file)` in the header. Skip the `Changed:` line.
   - Take all numbers from the diff hunk headers. Do not guess.
-- **Open the hunk in Neovim.** Before you write each step, run `nvim-open <abs-path> <first> <last>`. Use the full absolute path of the file in the worktree. Put the path in single quotes, because file names in a reviewed PR are not trusted. Use the header range for `<first>` and `<last>`. For a pure deletion, use the nearest surviving line for both. The script highlights the range in the Neovim of the current tmux window. It starts a split if none exists. Ignore its output. If it prints an error, tell the user in one line and keep stepping. Do this on `next`, `back`, and `jump` too.
+- **Open the hunk in Neovim.** Before you write each step, run `nvim-open <abs-path> <range>...`. Use the full absolute path of the file in the worktree. Put the path in single quotes, because file names in a reviewed PR are not trusted.
+  - A `<range>` is `N` or `FIRST-LAST`, in new-file lines.
+  - Pass each changed block as its own range, for example `nvim-open '/abs/File.java' 72-73 508-533`. Use the `Changed:` blocks. Never pass one range from the first block to the last block. It highlights code that did not change.
+  - For a hunk with one block, use the header range. For a pure deletion, use the nearest surviving line.
+  - The script highlights the ranges in the Neovim of the current tmux window and puts the cursor on the first range. It shows a range of more than 40 lines as its first 3 lines and its last line. It starts a split if none exists.
+  - Ignore its output. If it prints an error, tell the user in one line and keep stepping. Do this on `next`, `back`, and `jump` too.
+  - A step with ranges far apart: tell the user to look at the later range. Move Neovim there with `nvim-open --focus <line>` when the user asks or when you describe that range. This keeps the highlights.
 - **Never use `...` in a path.** It breaks fuzzy-finder matching in Telescope and fzf. This rule has no exceptions.
 - **Long paths: truncate from the left.** Drop leading directory segments with no marker. Keep enough trailing segments to stay unique among the files in this review. If two truncated paths collide, show more segments.
 - **Order:** most significant changes first, then supporting changes, then trivial ones such as config and formatting. Put implementation before its tests.

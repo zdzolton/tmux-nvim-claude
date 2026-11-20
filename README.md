@@ -15,7 +15,7 @@ Neovim pane (same tmux window)               Claude Code pane
   tmux-review plugin                           pr-walkthrough skill
     | at startup:                                | runs for each step
     |   tmux set-option -w @nvim_server <socket> v
-    |                                          nvim-open <abs-path> <first> <last>
+    |                                          nvim-open <abs-path> <range>...
   tab drop <path>, centre line,   <---- RPC ---- | reads @nvim_server
   highlight range                                v
                                                no Neovim in the window? It opens a split on the left with one.
@@ -139,10 +139,14 @@ Claude does not print code. Neovim shows the code, with the changed range highli
 ### `nvim-open`
 
 ```
-nvim-open <abs-path> <first-line> [last-line]
+nvim-open <abs-path> <range>...
+nvim-open --focus <line>
 ```
 
 - The path must be absolute.
+- A range is `N` or `FIRST-LAST`. Pass several ranges to highlight several blocks, for example `nvim-open /abs/File.java 72-73 508-533`. The cursor goes to the first range.
+- A range of more than 40 lines shows its first 3 lines and its last line. A note on the third line says how many lines are hidden.
+- `--focus <line>` moves the cursor in the current file and keeps the highlights. Use it to step between ranges.
 - It exits 0 on runtime problems, so it never blocks a review. It prints the reason on stderr.
 - If the window has a Neovim but no registered socket, it finds the socket through the process tree and registers it.
 - If the window has no Neovim, it opens a split on the left (60% of the width) and keeps focus on Claude.

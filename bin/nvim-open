@@ -1,19 +1,43 @@
 #!/usr/bin/env bash
-# Usage: nvim-open <abs-path> <first-line> [last-line]
-# Open a file in the Neovim of the current tmux window and highlight a line range.
+# Usage: nvim-open <abs-path> <range>...
+#        nvim-open --focus <line>
+# A range is N or FIRST-LAST. Open the file in the Neovim of the current tmux
+# window and highlight each range. Put the cursor on the first range.
+# A range longer than 40 lines gets a short highlight at its start and one at its end.
+# --focus moves the cursor to a line in the current buffer and keeps the highlights.
 # Start Neovim in a new split if the window has none. Never fail the caller.
 set -u
 
-usage() { echo "usage: nvim-open <abs-path> <first-line> [last-line]" >&2; exit 2; }
+usage() {
+	echo "usage: nvim-open <abs-path> <range>..." >&2
+	echo "       nvim-open --focus <line>" >&2
+	exit 2
+}
 
 [ $# -ge 2 ] || usage
-path=$1
-first=$2
-last=${3:-$2}
 
-case $path in /*) ;; *) echo "nvim-open: path must be absolute" >&2; exit 2 ;; esac
-case $path in *\"* | *\\*) echo "nvim-open: unsupported character in path" >&2; exit 2 ;; esac
-case $first$last in *[!0-9]*) echo "nvim-open: line numbers must be integers" >&2; exit 2 ;; esac
+if [ "$1" = "--focus" ]; then
+	[ $# -eq 2 ] || usage
+	case $2 in '' | *[!0-9]*) echo "nvim-open: line number must be an integer" >&2; exit 2 ;; esac
+	call="focus($2)"
+else
+	path=$1
+	shift
+	case $path in /*) ;; *) echo "nvim-open: path must be absolute" >&2; exit 2 ;; esac
+	case $path in *\"* | *\\*) echo "nvim-open: unsupported character in path" >&2; exit 2 ;; esac
+	ranges=""
+	for r in "$@"; do
+		if [[ $r =~ ^[0-9]+$ ]]; then
+			ranges="${ranges}[$r,$r],"
+		elif [[ $r =~ ^([0-9]+)-([0-9]+)$ ]]; then
+			ranges="${ranges}[${BASH_REMATCH[1]},${BASH_REMATCH[2]}],"
+		else
+			echo "nvim-open: range must be N or FIRST-LAST: $r" >&2
+			exit 2
+		fi
+	done
+	call="open(\"$path\", [$ranges])"
+fi
 
 [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || { echo "nvim-open: not in tmux" >&2; exit 0; }
 
@@ -66,7 +90,6 @@ else
 	[ -n "$sock" ] || { echo "nvim-open: Neovim did not register a socket" >&2; exit 0; }
 fi
 
-nvim --server "$sock" --remote-expr \
-	"v:lua.require('tmux_review').open(\"$path\", $first, $last)" >/dev/null ||
+nvim --server "$sock" --remote-expr "v:lua.require('tmux_review').$call" >/dev/null ||
 	echo "nvim-open: remote call failed" >&2
 exit 0
