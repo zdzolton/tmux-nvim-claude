@@ -50,12 +50,18 @@ end
 
 --- Open a file in a tab and highlight line ranges.
 --- Put the cursor on the first range.
+--- Set the tab directory to the git root of the file, if it has one.
 --- Returns an empty string because it is called through `--remote-expr`.
 ---@param path string absolute file path
 ---@param ranges integer[][] list of `{first, last}` pairs
 function M.open(path, ranges)
 	M.clear()
 	vim.cmd("tab drop " .. vim.fn.fnameescape(path))
+	-- Language servers that root at the cwd must see the worktree that holds the file.
+	local root = vim.fs.root(path, ".git")
+	if root then
+		vim.cmd("tcd " .. vim.fn.fnameescape(root))
+	end
 	local buf = vim.api.nvim_get_current_buf()
 	local count = vim.api.nvim_buf_line_count(buf)
 	local cursor

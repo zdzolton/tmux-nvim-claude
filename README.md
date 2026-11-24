@@ -147,6 +147,7 @@ nvim-open --focus <line>
 - A range is `N` or `FIRST-LAST`. Pass several ranges to highlight several blocks, for example `nvim-open /abs/File.java 72-73 508-533`. The cursor goes to the first range.
 - A range of more than 40 lines shows its first 3 lines and its last line. A note on the third line says how many lines are hidden.
 - `--focus <line>` moves the cursor in the current file and keeps the highlights. Use it to step between ranges.
+- It sets the Neovim tab directory (`:tcd`) to the git root of the file. A language server that roots at the cwd then sees the right worktree. A file outside a git repo leaves the directory as it was.
 - It exits 0 on runtime problems, so it never blocks a review. It prints the reason on stderr.
 - If the window has a Neovim but no registered socket, it finds the socket through the process tree and registers it.
 - If the window has no Neovim, it opens a split on the left (60% of the width) and keeps focus on Claude.

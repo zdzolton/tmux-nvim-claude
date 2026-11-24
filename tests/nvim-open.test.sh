@@ -77,6 +77,15 @@ check "focus keeps the highlights" "$(marks)" "13"
 "$REPO/bin/nvim-open" "$WORK/long.txt" 10-100
 check "shortens a long range" "$(marks)" "5"
 
+mkdir -p "$WORK/repo/sub"
+git -C "$WORK/repo" init -q
+seq 1 5 >"$WORK/repo/sub/in.txt"
+repo_real=$(cd "$WORK/repo" && pwd -P)
+"$REPO/bin/nvim-open" "$WORK/repo/sub/in.txt" 2
+check "sets the tab directory to the git root of the file" "$(q 'getcwd()')" "$repo_real"
+"$REPO/bin/nvim-open" "$WORK/one.txt" 2
+check "leaves the directory alone for a file outside a git repo" "$(q 'getcwd()')" "$(cd "$WORK" && pwd -P)"
+
 "$REPO/bin/nvim-open" "$WORK/one.txt" 1-2-3 2>/dev/null
 check "rejects a bad range with exit 2" "$?" "2"
 
